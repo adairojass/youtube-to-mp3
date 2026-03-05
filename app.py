@@ -11,6 +11,8 @@ from pathlib import Path
 import yt_dlp
 import tempfile
 import time
+import webbrowser
+import threading
 
 app = Flask(__name__)
 
@@ -126,13 +128,20 @@ def convert():
             'message': f'Error: {str(e)}'
         }), 500
 
+def open_browser():
+    """Abre el navegador automáticamente"""
+    webbrowser.open('http://localhost:3000')
+
 if __name__ == '__main__':
     print("\n" + "="*60)
     print("🎵  YouTube to MP3 Converter - Interfaz Web  🎵")
     print("="*60)
     print("\n✨ Servidor iniciado correctamente")
     print("📂 Los archivos se guardarán en:", get_desktop_path())
-    print("\n🌐 Abre tu navegador en: http://localhost:3000")
+    print("\n🌐 Abriendo navegador en: http://localhost:3000")
     print("\n⚠️  Presiona Ctrl+C para detener el servidor\n")
+    
+    # Abrir el navegador después de 1.5 segundos
+    threading.Timer(1.5, open_browser).start()
     
     app.run(debug=True, host='0.0.0.0', port=3000)
