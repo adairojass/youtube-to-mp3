@@ -99,6 +99,80 @@ def download_youtube_to_mp3(url, output_folder=None):
             'message': f'Error al descargar: {str(e)}'
         }
 
+def download_playlist_to_mp3(url, output_folder=None):
+    """
+    Descarga una playlist completa de YouTube y convierte todos los videos a MP3
+    
+    Args:
+        url: URL de la playlist de YouTube
+        output_folder: Carpeta de destino
+    
+    Returns:
+        dict: Información de los archivos descargados o error
+    """
+    if output_folder is None:
+        output_folder = get_desktop_path()
+    
+    # Crear la carpeta si no existe
+    os.makedirs(output_folder, exist_ok=True)
+    
+    # Configuración de yt-dlp para playlists
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'postprocessors': [
+            {
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            },
+            {
+                'key': 'FFmpegMetadata',
+                'add_metadata': True,
+            },
+        ],
+        'outtmpl': os.path.join(output_folder, '%(playlist)s', '%(playlist_index)s - %(title)s.%(ext)s'),
+        'quiet': True,
+        'no_warnings': True,
+        'noplaylist': False,  # Permitir playlists
+        'extract_flat': False,
+        'nocheckcertificate': True,
+        'writethumbnail': False,
+        'add_metadata': True,
+        'postprocessor_args': {
+            'FFmpegMetadata': ['-metadata', 'artist=%(uploader)s', '-metadata', 'title=%(title)s']
+        },
+    }
+    
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            
+            # Verificar si es una playlist
+            if 'entries' in info:
+                playlist_title = info.get('title', 'Playlist')
+                total_videos = len(info['entries'])
+                
+                return {
+                    'success': True,
+                    'playlist_title': playlist_title,
+                    'total_videos': total_videos,
+                    'message': f'¡Playlist descargada! {playlist_title} - {total_videos} canciones'
+                }
+            else:
+                # Si no es una playlist, descargar como canción individual
+                title = info.get('title', 'Unknown')
+                return {
+                    'success': True,
+                    'title': title,
+                    'message': f'¡Descarga completada! {title}'
+                }
+            
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'Error al descargar playlist: {str(e)}'
+        }
+
 @app.route('/')
 def index():
     """Página principal"""
@@ -110,6 +184,7 @@ def convert():
     try:
         data = request.get_json()
         url = data.get('url', '').strip()
+        download_type = data.get('type', 'single')  # 'single' o 'playlist'
         
         if not url:
             return jsonify({
@@ -117,8 +192,11 @@ def convert():
                 'message': 'Por favor ingresa una URL válida'
             }), 400
         
-        # Descargar y convertir
-        result = download_youtube_to_mp3(url)
+        # Descargar según el tipo seleccionado
+        if download_type == 'playlist':
+            result = download_playlist_to_mp3(url)
+        else:
+            result = download_youtube_to_mp3(url)
         
         return jsonify(result)
         

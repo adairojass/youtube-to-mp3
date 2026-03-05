@@ -182,6 +182,70 @@
         .info-box strong {
             color: #333;
         }
+
+        .download-type {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .download-type label {
+            flex: 1;
+            cursor: pointer;
+        }
+
+        .radio-card {
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .radio-card:hover {
+            border-color: #4facfe;
+            background: #f8f9fa;
+        }
+
+        .radio-card input[type="radio"] {
+            display: none;
+        }
+
+        .radio-card input[type="radio"]:checked + .card-content {
+            color: #4facfe;
+        }
+
+        .radio-card input[type="radio"]:checked ~ .radio-card {
+            border-color: #4facfe;
+            background: #e3f2fd;
+        }
+
+        .radio-card.selected {
+            border-color: #4facfe;
+            background: #e3f2fd;
+        }
+
+        .card-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .card-icon {
+            font-size: 32px;
+        }
+
+        .card-title {
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .card-description {
+            font-size: 12px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -193,6 +257,25 @@
         </div>
 
         <form id="convertForm">
+            <div class="download-type">
+                <label class="radio-card selected" id="singleCard">
+                    <input type="radio" name="downloadType" value="single" checked>
+                    <div class="card-content">
+                        <div class="card-icon">🎵</div>
+                        <div class="card-title">Canción Individual</div>
+                        <div class="card-description">Descargar un video</div>
+                    </div>
+                </label>
+                <label class="radio-card" id="playlistCard">
+                    <input type="radio" name="downloadType" value="playlist">
+                    <div class="card-content">
+                        <div class="card-icon">💿</div>
+                        <div class="card-title">Playlist Completa</div>
+                        <div class="card-description">Descargar todos los videos</div>
+                    </div>
+                </label>
+            </div>
+
             <div class="form-group">
                 <label for="url">URL del Video de YouTube</label>
                 <input 
@@ -217,7 +300,8 @@
         <div class="info-box">
             <p>
                 <strong>📂 Ubicación:</strong> Los archivos MP3 se guardarán en<br>
-                <code>~/Desktop/Musica_YouTube/</code>
+                <code>~/Desktop/Musica_YouTube/</code><br>
+                <small>Las playlists se guardan en subcarpetas con el nombre de la playlist</small>
             </p>
         </div>
     </div>
@@ -228,6 +312,26 @@
         const btnConvert = document.getElementById('btnConvert');
         const loader = document.getElementById('loader');
         const alert = document.getElementById('alert');
+        const singleCard = document.getElementById('singleCard');
+        const playlistCard = document.getElementById('playlistCard');
+        const radioButtons = document.querySelectorAll('input[name="downloadType"]');
+
+        // Manejar clicks en las tarjetas
+        radioButtons.forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.value === 'single') {
+                    singleCard.classList.add('selected');
+                    playlistCard.classList.remove('selected');
+                    btnConvert.innerHTML = '🎵 Convertir a MP3';
+                    urlInput.placeholder = 'https://www.youtube.com/watch?v=...';
+                } else {
+                    playlistCard.classList.add('selected');
+                    singleCard.classList.remove('selected');
+                    btnConvert.innerHTML = '💿 Descargar Playlist';
+                    urlInput.placeholder = 'https://www.youtube.com/playlist?list=...';
+                }
+            });
+        });
 
         function showAlert(message, type) {
             alert.textContent = message;
@@ -244,12 +348,14 @@
         function setLoading(isLoading) {
             if (isLoading) {
                 btnConvert.disabled = true;
-                btnConvert.textContent = 'Convirtiendo...';
+                const downloadType = document.querySelector('input[name="downloadType"]:checked').value;
+                btnConvert.textContent = downloadType === 'playlist' ? 'Descargando Playlist...' : 'Convirtiendo...';
                 loader.style.display = 'block';
                 alert.style.display = 'none';
             } else {
                 btnConvert.disabled = false;
-                btnConvert.textContent = '🎵 Convertir a MP3';
+                const downloadType = document.querySelector('input[name="downloadType"]:checked').value;
+                btnConvert.innerHTML = downloadType === 'playlist' ? '💿 Descargar Playlist' : '🎵 Convertir a MP3';
                 loader.style.display = 'none';
             }
         }
@@ -258,6 +364,7 @@
             e.preventDefault();
             
             const url = urlInput.value.trim();
+            const downloadType = document.querySelector('input[name="downloadType"]:checked').value;
             
             if (!url) {
                 showAlert('Por favor ingresa una URL válida', 'error');
@@ -270,7 +377,12 @@
             }
 
             setLoading(true);
-            showAlert('Descargando y convirtiendo... Esto puede tomar unos minutos.', 'info');
+            
+            const loadingMessage = downloadType === 'playlist' 
+                ? 'Descargando playlist completa... Esto puede tomar varios minutos según la cantidad de videos.' 
+                : 'Descargando y convirtiendo... Esto puede tomar unos minutos.';
+            
+            showAlert(loadingMessage, 'info');
 
             try {
                 const response = await fetch('/convert', {
@@ -278,13 +390,22 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ url: url })
+                    body: JSON.stringify({ 
+                        url: url,
+                        type: downloadType
+                    })
                 });
 
                 const data = await response.json();
 
                 if (data.success) {
-                    showAlert(`✅ ${data.message}\n📂 Archivo guardado en Desktop/Musica_YouTube/`, 'success');
+                    let successMessage = '';
+                    if (downloadType === 'playlist' && data.total_videos) {
+                        successMessage = `✅ ${data.message}\n📂 Archivos guardados en Desktop/Musica_YouTube/${data.playlist_title}/`;
+                    } else {
+                        successMessage = `✅ ${data.message}\n📂 Archivo guardado en Desktop/Musica_YouTube/`;
+                    }
+                    showAlert(successMessage, 'success');
                     urlInput.value = '';
                 } else {
                     showAlert(`❌ ${data.message}`, 'error');
