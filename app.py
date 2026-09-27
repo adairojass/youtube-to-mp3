@@ -13,6 +13,9 @@ import tempfile
 import time
 import webbrowser
 import threading
+import zipfile
+from io import BytesIO
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
@@ -25,6 +28,11 @@ def clean_title(title):
     # Remover patrones como "Artista - " o "Artista: " al inicio
     cleaned = re.sub(r'^[^-:]+[-:]\s*', '', title)
     return cleaned.strip() if cleaned else title
+
+def safe_download_name(name, extension):
+    """Crea un nombre de archivo seguro para enviar al navegador."""
+    cleaned = secure_filename(clean_title(name)) or "audio"
+    return f"{cleaned}.{extension}"
 
 def download_youtube_to_mp3(url, output_folder=None):
     """
@@ -74,12 +82,11 @@ def download_youtube_to_mp3(url, output_folder=None):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             title = info.get('title', 'Unknown')
-            filename = f"{title}.mp3"
-            filepath = os.path.join(output_folder, filename)
+            filepath = os.path.splitext(ydl.prepare_filename(info))[0] + '.mp3'
             
             # Limpiar el nombre del archivo
             clean_name = clean_title(title)
-            new_filepath = os.path.join(output_folder, f"{clean_name}.mp3")
+            new_filepath = os.path.join(output_folder, safe_download_name(clean_name, 'mp3'))
             
             # Renombrar el archivo si existe
             if os.path.exists(filepath) and filepath != new_filepath:
@@ -90,6 +97,7 @@ def download_youtube_to_mp3(url, output_folder=None):
                 'success': True,
                 'title': clean_name,
                 'filepath': filepath,
+                'filename': os.path.basename(filepath),
                 'message': f'¡Descarga completada! {clean_name}'
             }
             
@@ -156,6 +164,7 @@ def download_playlist_to_mp3(url, output_folder=None):
                     'success': True,
                     'playlist_title': playlist_title,
                     'total_videos': total_videos,
+                    'output_folder': output_folder,
                     'message': f'¡Playlist descargada! {playlist_title} - {total_videos} canciones'
                 }
             else:
@@ -178,6 +187,34 @@ def index():
     """Página principal"""
     return render_template('index.html')
 
+@app.route('/health')
+def health():
+    """Endpoint simple para verificar que el servicio está vivo."""
+    return jsonify({'status': 'ok'})
+
+def file_response(filepath, download_name):
+    """Lee el archivo en memoria para poder borrar temporales al terminar."""
+    buffer = BytesIO(Path(filepath).read_bytes())
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name=download_name)
+
+def zip_folder_response(folder, download_name):
+    """Empaqueta los MP3 generados para descargar playlists desde el navegador."""
+    buffer = BytesIO()
+    mp3_files = sorted(Path(folder).rglob('*.mp3'))
+
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for mp3_file in mp3_files:
+            archive.write(mp3_file, mp3_file.relative_to(folder))
+
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=download_name,
+        mimetype='application/zip',
+    )
+
 @app.route('/convert', methods=['POST'])
 def convert():
     """Endpoint para convertir video a MP3"""
@@ -192,13 +229,25 @@ def convert():
                 'message': 'Por favor ingresa una URL válida'
             }), 400
         
-        # Descargar según el tipo seleccionado
-        if download_type == 'playlist':
-            result = download_playlist_to_mp3(url)
-        else:
-            result = download_youtube_to_mp3(url)
-        
-        return jsonify(result)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Descargar según el tipo seleccionado
+            if download_type == 'playlist':
+                result = download_playlist_to_mp3(url, temp_dir)
+                if not result.get('success'):
+                    return jsonify(result), 400
+
+                download_name = safe_download_name(result.get('playlist_title', 'playlist'), 'zip')
+                return zip_folder_response(temp_dir, download_name)
+
+            result = download_youtube_to_mp3(url, temp_dir)
+
+            if not result.get('success'):
+                return jsonify(result), 400
+
+            return file_response(
+                result['filepath'],
+                result.get('filename') or safe_download_name(result.get('title', 'audio'), 'mp3')
+            )
         
     except Exception as e:
         return jsonify({
@@ -211,15 +260,18 @@ def open_browser():
     webbrowser.open('http://localhost:3000')
 
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 3000))
+    debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+
     print("\n" + "="*60)
     print("🎵  YouTube to MP3 Converter - Interfaz Web  🎵")
     print("="*60)
     print("\n✨ Servidor iniciado correctamente")
-    print("📂 Los archivos se guardarán en:", get_desktop_path())
-    print("\n🌐 Abriendo navegador en: http://localhost:3000")
+    print("\n🌐 Servidor escuchando en:", f"http://0.0.0.0:{port}")
     print("\n⚠️  Presiona Ctrl+C para detener el servidor\n")
     
-    # Abrir el navegador después de 1.5 segundos
-    threading.Timer(1.5, open_browser).start()
+    if not os.environ.get('PORT'):
+        # Abrir el navegador solo cuando se ejecuta localmente.
+        threading.Timer(1.5, open_browser).start()
     
-    app.run(debug=True, host='0.0.0.0', port=3000)
+    app.run(debug=debug, host='0.0.0.0', port=port)

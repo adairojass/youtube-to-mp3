@@ -31,6 +31,24 @@ python3 app.py
 
 Luego abre tu navegador en: **http://localhost:3000**
 
+## 🚂 Desplegar en Railway
+
+Este proyecto ya incluye un `Dockerfile` listo para Railway. El contenedor instala FFmpeg, instala las dependencias de Python y arranca Flask con Gunicorn usando el puerto que Railway asigna automáticamente.
+
+### Pasos
+
+1. Sube este proyecto a un repositorio de GitHub.
+2. En Railway, crea un proyecto nuevo y elige **Deploy from GitHub repo**.
+3. Selecciona este repositorio.
+4. Railway detectará el `Dockerfile` y construirá la app.
+5. Cuando termine el deploy, entra a **Settings > Networking** y genera un dominio público.
+
+No necesitas configurar variables de entorno para el deploy básico. Railway define `PORT` automáticamente.
+
+### Nota importante
+
+En Railway los archivos no se guardan en tu computadora. Por eso la versión web genera el MP3 temporalmente y lo descarga directamente desde el navegador. Las playlists se descargan como `.zip`.
+
 ### Modo Terminal (Alternativo)
 
 Si prefieres usar la terminal:
@@ -72,4 +90,3 @@ youtube-to-mp3/
 - Asegúrate de tener FFmpeg instalado antes de usar la aplicación
 - Los videos muy largos pueden tomar más tiempo en convertirse
 - Solo funciona con videos públicos de YouTube
-
